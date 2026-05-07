@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Swords, Users, Calendar, BarChart3, BookOpen, AlertCircle } from 'lucide-react';
+﻿import { useState, useEffect } from 'react';
+import { Trees, Users, Calendar, BarChart3, BookOpen, AlertCircle, Sun } from 'lucide-react';
 import { isConfigured } from './lib/supabase';
 import Dashboard from './components/Dashboard.jsx';
 import Players from './components/Players.jsx';
@@ -8,11 +8,11 @@ import Stats from './components/Stats.jsx';
 import History from './components/History.jsx';
 
 const TABS = [
-  { id: 'dashboard', label: 'Tonight', icon: Calendar },
+  { id: 'dashboard', label: 'Today', icon: Calendar },
   { id: 'players', label: 'Roster', icon: Users },
   { id: 'battles', label: 'Battle Library', icon: BookOpen },
   { id: 'stats', label: 'Stats', icon: BarChart3 },
-  { id: 'history', label: 'History', icon: Swords }
+  { id: 'history', label: 'History', icon: Trees }
 ];
 
 export default function App() {
@@ -25,19 +25,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="border-b border-forest-700 bg-forest-900/80 backdrop-blur sticky top-0 z-20">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-md bg-forest-800 border border-blood-500/40 flex items-center justify-center">
-              <Swords className="w-5 h-5 text-blood-400" />
-            </div>
-            <div>
-              <h1 className="text-lg font-display text-parchment-50 leading-tight">
-                Belegarth Practice Manager
-              </h1>
-              <p className="text-xs text-parchment-100/60">Sign-ins · Stats · Battles</p>
-            </div>
+      <header className="border-b border-grass-100 bg-white/80 backdrop-blur sticky top-0 z-20">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-grass-500 to-grass-700 flex items-center justify-center shadow-sm">
+            <Sun className="w-6 h-6 text-cream-50" />
           </div>
+          <h1 className="text-2xl font-display text-ink-900 leading-none">The Park</h1>
         </div>
         <nav className="max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto">
           {TABS.map((t) => {
@@ -47,10 +40,10 @@ export default function App() {
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition whitespace-nowrap ${
+                className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition whitespace-nowrap ${
                   active
-                    ? 'border-blood-500 text-parchment-50'
-                    : 'border-transparent text-parchment-100/60 hover:text-parchment-50 hover:border-forest-600'
+                    ? 'border-grass-600 text-grass-700'
+                    : 'border-transparent text-ink-700/60 hover:text-ink-900 hover:border-grass-200'
                 }`}
               >
                 <Icon className="w-4 h-4" />
@@ -74,8 +67,8 @@ export default function App() {
         )}
       </main>
 
-      <footer className="border-t border-forest-700 py-4 text-center text-xs text-parchment-100/40">
-        For the realm. ⚔
+      <footer className="border-t border-grass-100 py-4 text-center text-xs text-ink-700/50 bg-white/40">
+        See you at the park ☀
       </footer>
     </div>
   );
@@ -85,22 +78,10 @@ function ConfigBanner() {
   return (
     <div className="card p-6 max-w-2xl mx-auto">
       <div className="flex items-start gap-3">
-        <AlertCircle className="w-6 h-6 text-blood-400 flex-shrink-0 mt-0.5" />
+        <AlertCircle className="w-6 h-6 text-sun-600 flex-shrink-0 mt-0.5" />
         <div className="space-y-3">
           <h2 className="text-xl font-display">Setup required</h2>
-          <p className="text-parchment-100/80">
-            This app needs to be connected to a Supabase project. Create a free project at{' '}
-            <a href="https://supabase.com" className="text-blood-400 underline" target="_blank" rel="noreferrer">
-              supabase.com
-            </a>
-            , then:
-          </p>
-          <ol className="list-decimal list-inside space-y-1 text-sm text-parchment-100/80">
-            <li>Run <code className="text-blood-400">supabase/schema.sql</code> in the SQL editor.</li>
-            <li>Copy <code className="text-blood-400">.env.example</code> to <code className="text-blood-400">.env</code>.</li>
-            <li>Fill in <code className="text-blood-400">VITE_SUPABASE_URL</code> and <code className="text-blood-400">VITE_SUPABASE_ANON_KEY</code> from Project Settings → API.</li>
-            <li>Restart <code className="text-blood-400">npm run dev</code>.</li>
-          </ol>
+          <p className="text-ink-700/80">Configure your Supabase connection to continue.</p>
         </div>
       </div>
     </div>
