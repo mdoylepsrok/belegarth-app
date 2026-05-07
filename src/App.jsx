@@ -1,15 +1,17 @@
-﻿import { useState, useEffect } from 'react';
-import { Trees, Users, Calendar, BarChart3, BookOpen, AlertCircle, Sun } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Trees, Users, Calendar, BarChart3, BookOpen, AlertCircle, Sun, ClipboardList } from 'lucide-react';
 import { isConfigured } from './lib/supabase';
 import Dashboard from './components/Dashboard.jsx';
 import Players from './components/Players.jsx';
 import BattleLibrary from './components/BattleLibrary.jsx';
 import Stats from './components/Stats.jsx';
 import History from './components/History.jsx';
+import Attendance from './components/Attendance.jsx';
 
 const TABS = [
   { id: 'dashboard', label: 'Today', icon: Calendar },
   { id: 'players', label: 'Roster', icon: Users },
+  { id: 'attendance', label: 'Attendance', icon: ClipboardList },
   { id: 'battles', label: 'Battle Library', icon: BookOpen },
   { id: 'stats', label: 'Stats', icon: BarChart3 },
   { id: 'history', label: 'History', icon: Trees }
@@ -60,6 +62,7 @@ export default function App() {
           <>
             {tab === 'dashboard' && <Dashboard />}
             {tab === 'players' && <Players />}
+            {tab === 'attendance' && <Attendance />}
             {tab === 'battles' && <BattleLibrary />}
             {tab === 'stats' && <Stats />}
             {tab === 'history' && <History />}
