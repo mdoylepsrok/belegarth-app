@@ -4,25 +4,40 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Belegarth-feel palette: forest, blood, parchment
-        forest: {
-          900: '#0f1c14',
-          800: '#152821',
-          700: '#1d3a2f',
-          600: '#2a5443'
+        // "The Park" palette — daylight, grass, warm sun
+        grass: {
+          50: '#f1f9ed',
+          100: '#dff1d5',
+          200: '#bde4ab',
+          500: '#5fa83a',
+          600: '#4a8a2a',
+          700: '#3a6e21',
+          900: '#1f3d12'
         },
-        blood: {
-          600: '#8b1a1a',
-          500: '#a82424',
-          400: '#c0392b'
+        sun: {
+          400: '#fbbf24',
+          500: '#f59e0b',
+          600: '#d97706'
         },
-        parchment: {
-          50: '#f7f3e9',
-          100: '#ebe3cc'
+        sky: {
+          50: '#eff8ff',
+          100: '#dbeafe',
+          500: '#3b82f6',
+          600: '#2563eb'
+        },
+        cream: {
+          50: '#fffdf7',
+          100: '#fef9e7',
+          200: '#fdf3cc'
+        },
+        ink: {
+          700: '#374151',
+          800: '#1f2937',
+          900: '#111827'
         }
       },
       fontFamily: {
-        display: ['Cinzel', 'Georgia', 'serif']
+        display: ['Fraunces', 'Georgia', 'serif']
       }
     }
   },
