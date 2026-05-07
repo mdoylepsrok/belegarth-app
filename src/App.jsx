@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Trees, Users, Calendar, BarChart3, BookOpen, AlertCircle, Sun, ClipboardList } from 'lucide-react';
 import { isConfigured } from './lib/supabase';
+import { useAuth, LoginScreen, LogoutButton } from './lib/auth.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import Players from './components/Players.jsx';
 import BattleLibrary from './components/BattleLibrary.jsx';
@@ -20,10 +21,14 @@ const TABS = [
 export default function App() {
   const [tab, setTab] = useState('dashboard');
   const [configured, setConfigured] = useState(true);
+  const { authed, ready } = useAuth();
 
   useEffect(() => {
     setConfigured(isConfigured());
   }, []);
+
+  if (!ready) return null; // brief flash while checking stored auth
+  if (!authed) return <LoginScreen />;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -70,8 +75,11 @@ export default function App() {
         )}
       </main>
 
-      <footer className="border-t border-grass-100 py-4 text-center text-xs text-ink-700/50 bg-white/40">
-        See you at the park ☀
+      <footer className="border-t border-grass-100 py-4 bg-white/40">
+        <div className="max-w-6xl mx-auto px-4 flex items-center justify-between text-xs text-ink-700/50">
+          <span>See you at the park ☀</span>
+          <LogoutButton />
+        </div>
       </footer>
     </div>
   );
