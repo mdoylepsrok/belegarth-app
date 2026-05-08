@@ -210,7 +210,7 @@ export default function Dashboard() {
   );
 
   function pickBattle() {
-    const game = pickRandomBattle(games);
+    const game = pickRandomBattle(games, presentPlayers.length);
     if (!game) {
       alert('No battle games in the random pool. Add some in the Battles tab.');
       return;

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Team balancing utilities.
  *
  * balanceTeams() takes a list of present players (each with a `score` value)
@@ -6,7 +6,6 @@
  * scores are as even as possible.
  *
  * Score = skill_rating * 10 + min(kd_ratio, 5) * 4 + win_pct/10
- * (clamps prevent one mega-stat from dominating)
  */
 
 export function computePlayerScore(p) {
@@ -20,14 +19,12 @@ export function balanceTeams(players, teamCount = 2) {
   if (!players?.length) return [];
   const n = Math.max(2, Math.min(6, teamCount));
 
-  // Sort by score, strongest first
   const ranked = [...players]
     .map((p) => ({ ...p, _score: computePlayerScore(p) }))
     .sort((a, b) => b._score - a._score);
 
   const teams = Array.from({ length: n }, () => []);
 
-  // Snake draft: 0,1,2,...,n-1, n-1,...,1,0, 0,1,...
   let direction = 1;
   let idx = 0;
   for (const player of ranked) {
@@ -42,7 +39,6 @@ export function balanceTeams(players, teamCount = 2) {
     }
   }
 
-  // Light shuffle within each team for visual variety (doesn't affect balance)
   return teams.map((team) => shuffleInPlace([...team]));
 }
 
@@ -58,8 +54,8 @@ function shuffleInPlace(arr) {
   return arr;
 }
 
-export function pickRandomBattle(games) {
-  const pool = games.filter((g) => g.in_pool);
+export function pickRandomBattle(games, presentCount = Infinity) {
+  const pool = games.filter((g) => g.in_pool && (g.min_players || 0) <= presentCount);
   if (!pool.length) return null;
   return pool[Math.floor(Math.random() * pool.length)];
 }
