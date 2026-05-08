@@ -1,15 +1,13 @@
 import { useEffect, useState, useMemo } from 'react';
 import {
   Dices, Shuffle, UserCheck, UserX, Save, Trophy, RefreshCw,
-  Plus, Minus, History as HistoryIcon, CheckCircle2, Swords
+  Plus, Minus, CheckCircle2, Swords, PlayCircle, Trash2
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { balanceTeams, pickRandomBattle, pickTeamLabels, teamTotal } from '../lib/teamBalancer';
 
 export default function Dashboard() {
   const [session, setSession] = useState(null);
-  const [previousSession, setPreviousSession] = useState(null);
-  const [previousAttendees, setPreviousAttendees] = useState([]);
   const [players, setPlayers] = useState([]);
   const [signedIn, setSignedIn] = useState(new Set());
   const [games, setGames] = useState([]);
@@ -17,48 +15,69 @@ export default function Dashboard() {
   const [teams, setTeams] = useState([]);
   const [teamLabels, setTeamLabels] = useState([]);
   const [currentBattleId, setCurrentBattleId] = useState(null);
-  const [battleStats, setBattleStats] = useState({});  // { battleTeamRowId: {kills, deaths} }
+  const [battleStats, setBattleStats] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [starting, setStarting] = useState(false);
 
   useEffect(() => { init(); }, []);
 
   async function init() {
     setLoading(true);
-    await Promise.all([loadOrCreateSession(), loadPlayers(), loadGames()]);
+    await Promise.all([checkExistingSession(), loadPlayers(), loadGames()]);
     setLoading(false);
   }
 
-  async function loadOrCreateSession() {
+  // Look for an existing session today, but don't create one
+  async function checkExistingSession() {
     const today = new Date().toISOString().slice(0, 10);
-
-    // Today's session
-    let { data } = await supabase.from('sessions').select('*').eq('session_date', today).maybeSingle();
-    if (!data) {
-      const { data: created } = await supabase
-        .from('sessions').insert({ session_date: today }).select().single();
-      data = created;
-    }
-    setSession(data);
-
+    const { data } = await supabase.from('sessions').select('*').eq('session_date', today).maybeSingle();
+    setSession(data || null);
     if (data) {
       const { data: ins } = await supabase
         .from('sign_ins').select('player_id').eq('session_id', data.id);
       setSignedIn(new Set((ins || []).map((r) => r.player_id)));
     }
+  }
 
-    // Most recent prior session (for "copy from last session")
-    const { data: prior } = await supabase
-      .from('sessions').select('*')
-      .lt('session_date', today)
-      .order('session_date', { ascending: false })
-      .limit(1).maybeSingle();
-    if (prior) {
-      setPreviousSession(prior);
-      const { data: priorIns } = await supabase
-        .from('sign_ins').select('player_id').eq('session_id', prior.id);
-      setPreviousAttendees((priorIns || []).map((r) => r.player_id));
+  async function startSession() {
+    setStarting(true);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const { data, error } = await supabase
+        .from('sessions').insert({ session_date: today }).select().single();
+      if (error) throw error;
+      setSession(data);
+      setSignedIn(new Set());
+    } catch (err) {
+      alert('Could not start session: ' + err.message);
+    } finally {
+      setStarting(false);
     }
+  }
+
+  async function endSession() {
+    if (!session) return;
+    if (!confirm("End today's session? Sign-ins and battles will be saved to history. This won't delete anything.")) return;
+    // Just clear local state — session and its data stay in Supabase
+    setSession(null);
+    setSignedIn(new Set());
+    setSelectedGame(null);
+    setTeams([]);
+    setCurrentBattleId(null);
+    setBattleStats({});
+  }
+
+  async function deleteSession() {
+    if (!session) return;
+    if (!confirm("Delete today's session entirely? Removes all sign-ins and battles for today. This cannot be undone.")) return;
+    await supabase.from('sessions').delete().eq('id', session.id);
+    setSession(null);
+    setSignedIn(new Set());
+    setSelectedGame(null);
+    setTeams([]);
+    setCurrentBattleId(null);
+    setBattleStats({});
   }
 
   async function loadPlayers() {
@@ -84,18 +103,6 @@ export default function Dashboard() {
       await supabase.from('sign_ins').insert({ session_id: session.id, player_id: playerId });
     }
     setSignedIn(next);
-  }
-
-  async function copyFromLast() {
-    if (!session || !previousAttendees.length) return;
-    const newOnes = previousAttendees.filter((id) => !signedIn.has(id));
-    if (!newOnes.length) {
-      alert("Already matches last session's roster.");
-      return;
-    }
-    const rows = newOnes.map((id) => ({ session_id: session.id, player_id: id }));
-    await supabase.from('sign_ins').insert(rows);
-    setSignedIn(new Set([...signedIn, ...newOnes]));
   }
 
   async function signInAll() {
@@ -168,7 +175,6 @@ export default function Dashboard() {
         .from('battle_teams').insert(rows).select();
       if (tErr) throw tErr;
 
-      // Build mapping: player_id → battle_team row id, so the inline counters can update them
       const stats = {};
       insertedRows.forEach((r) => {
         stats[r.player_id] = { rowId: r.id, kills: 0, deaths: 0 };
@@ -199,9 +205,7 @@ export default function Dashboard() {
   }
 
   async function nextBattle() {
-    if (currentBattleId) {
-      await loadPlayers();  // refresh stats
-    }
+    if (currentBattleId) await loadPlayers();
     setSelectedGame(null);
     setTeams([]);
     setCurrentBattleId(null);
@@ -209,6 +213,27 @@ export default function Dashboard() {
   }
 
   if (loading) return <Loading />;
+
+  // No session today yet — show the start screen
+  if (!session) {
+    return (
+      <div className="card p-8 max-w-md mx-auto text-center">
+        <div className="w-16 h-16 rounded-2xl bg-grass-100 mx-auto mb-4 flex items-center justify-center">
+          <PlayCircle className="w-8 h-8 text-grass-600" />
+        </div>
+        <h2 className="text-2xl font-display mb-2">No session today</h2>
+        <p className="text-sm text-ink-700/60 mb-6">
+          Start a session when fighters arrive at the park.
+        </p>
+        <button onClick={startSession} disabled={starting} className="btn-primary justify-center w-full">
+          <PlayCircle className="w-5 h-5" /> {starting ? 'Starting...' : "Start Today's Session"}
+        </button>
+        <p className="text-xs text-ink-700/40 mt-4">
+          {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -218,20 +243,21 @@ export default function Dashboard() {
           <div>
             <h2 className="text-xl font-display">Sign-In</h2>
             <p className="text-sm text-ink-700/60">
-              {session?.session_date && new Date(session.session_date + 'T00:00:00').toLocaleDateString(undefined, {
+              {new Date(session.session_date + 'T00:00:00').toLocaleDateString(undefined, {
                 weekday: 'long', month: 'long', day: 'numeric'
               })}{' · '}
               <span className="font-semibold text-grass-700">{signedIn.size}</span> of {players.length} present
             </p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            {previousSession && previousAttendees.length > 0 && (
-              <button onClick={copyFromLast} className="btn-secondary text-sm" title={`Copy ${previousAttendees.length} attendees from ${previousSession.session_date}`}>
-                <HistoryIcon className="w-4 h-4" /> Copy last session
-              </button>
-            )}
             <button onClick={signInAll} className="btn-secondary text-sm">All in</button>
             <button onClick={signOutAll} className="btn-ghost text-sm">Clear</button>
+            <button onClick={endSession} className="btn-ghost text-sm" title="End the session — data is saved">
+              End
+            </button>
+            <button onClick={deleteSession} className="btn-ghost text-sm text-sun-600" title="Delete this session entirely">
+              <Trash2 className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
