@@ -185,20 +185,46 @@ function SetupView({ config, setConfig, onStart }) {
           <label className="label flex items-center gap-2 mb-0">
             <Heart className="w-4 h-4 text-sun-600" /> Lives per team
           </label>
-          <span className="font-display text-2xl tabular-nums">
-            {config.livesPerTeam || '∞'}
-          </span>
+          <input
+            type="number"
+            min="0"
+            max="999"
+            value={config.livesPerTeam}
+            onChange={(e) => {
+              const n = Math.max(0, Math.min(999, Number(e.target.value) || 0));
+              set('livesPerTeam', n);
+            }}
+            className="w-20 text-right font-display text-2xl tabular-nums bg-transparent border-0 focus:outline-none focus:ring-2 focus:ring-grass-200 rounded px-1"
+          />
         </div>
         <input
-          type="range" min="0" max="20" step="1"
-          value={config.livesPerTeam}
+          type="range"
+          min="0"
+          max="200"
+          step={config.livesPerTeam < 30 ? 1 : 5}
+          value={Math.min(config.livesPerTeam, 200)}
           onChange={(e) => set('livesPerTeam', Number(e.target.value))}
           className="w-full accent-grass-600"
         />
+        <div className="flex gap-1 flex-wrap">
+          {[0, 5, 10, 25, 50, 100, 200].map((n) => (
+            <button
+              key={n}
+              onClick={() => set('livesPerTeam', n)}
+              className={`text-xs px-2 py-1 rounded border transition ${
+                config.livesPerTeam === n
+                  ? 'bg-grass-500 border-grass-600 text-white'
+                  : 'border-grass-200 hover:bg-cream-100'
+              }`}
+            >
+              {n === 0 ? '∞' : n}
+            </button>
+          ))}
+        </div>
         <p className="text-xs text-ink-700/50">
           {config.livesPerTeam === 0
             ? 'No life pool — manual tracking only.'
-            : `Each team starts with ${config.livesPerTeam} lives.`}
+            : `Each team starts with ${config.livesPerTeam} lives. Type for exact values above 200.`}
         </p>
       </div>
 
@@ -230,22 +256,44 @@ function SetupView({ config, setConfig, onStart }) {
           <div>
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs text-ink-700/60">Duration</span>
-              <span className="font-display text-xl tabular-nums">
-                {formatSeconds(config.timerSeconds)}
-              </span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="5"
+                  max="7200"
+                  step="5"
+                  value={config.timerSeconds}
+                  onChange={(e) => {
+                    const n = Math.max(5, Math.min(7200, Number(e.target.value) || 5));
+                    set('timerSeconds', n);
+                  }}
+                  className="w-20 text-right font-display text-xl tabular-nums bg-transparent border-0 focus:outline-none focus:ring-2 focus:ring-sky-200 rounded px-1"
+                />
+                <span className="text-xs text-ink-700/50">sec</span>
+                <span className="font-display text-xl tabular-nums text-ink-700/60 border-l border-grass-200 pl-2">
+                  {formatSeconds(config.timerSeconds)}
+                </span>
+              </div>
             </div>
             <input
-              type="range" min="30" max="900" step="30"
-              value={config.timerSeconds}
+              type="range"
+              min="30"
+              max="3600"
+              step={config.timerSeconds < 600 ? 30 : 60}
+              value={Math.min(config.timerSeconds, 3600)}
               onChange={(e) => set('timerSeconds', Number(e.target.value))}
               className="w-full accent-sky-600"
             />
-            <div className="flex justify-between gap-1 mt-2">
-              {[60, 120, 180, 300, 600].map((s) => (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {[60, 120, 180, 300, 600, 900, 1800, 3600].map((s) => (
                 <button
                   key={s}
                   onClick={() => set('timerSeconds', s)}
-                  className="text-xs px-2 py-1 rounded border border-grass-200 hover:bg-cream-100"
+                  className={`text-xs px-2 py-1 rounded border transition ${
+                    config.timerSeconds === s
+                      ? 'bg-sky-500 border-sky-600 text-white'
+                      : 'border-grass-200 hover:bg-cream-100'
+                  }`}
                 >
                   {formatSeconds(s)}
                 </button>
