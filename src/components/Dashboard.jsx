@@ -1,7 +1,8 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import {
-  Dices, Shuffle, UserCheck, UserX, Save, Trophy, RefreshCw,
-  Plus, Minus, CheckCircle2, Swords, PlayCircle, Trash2
+  Dices, Shuffle, Save, Trophy, RefreshCw, Plus, Minus,
+  CheckCircle2, Swords, PlayCircle, Trash2, UserPlus, X, Check,
+  Timer, Play, Pause, RotateCcw, Heart, UserX
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { balanceTeams, pickRandomBattle, pickTeamLabels, teamTotal } from '../lib/teamBalancer';
@@ -16,9 +17,16 @@ export default function Dashboard() {
   const [teamLabels, setTeamLabels] = useState([]);
   const [currentBattleId, setCurrentBattleId] = useState(null);
   const [battleStats, setBattleStats] = useState({});
+  const [teamLives, setTeamLives] = useState({}); // { team_number: lives_remaining }
+  const [teamLifeRowIds, setTeamLifeRowIds] = useState({}); // { team_number: row_id }
+  const [showWalkup, setShowWalkup] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [starting, setStarting] = useState(false);
+
+  // Refs for realtime cleanup
+  const sessionRef = useRef(null);
+  const battleRef = useRef(null);
 
   useEffect(() => { init(); }, []);
 
@@ -28,7 +36,70 @@ export default function Dashboard() {
     setLoading(false);
   }
 
-  // Look for an existing session today, but don't create one
+  // Subscribe to realtime sign-in changes for the current session
+  useEffect(() => {
+    if (sessionRef.current) {
+      supabase.removeChannel(sessionRef.current);
+      sessionRef.current = null;
+    }
+    if (!session) return;
+
+    const ch = supabase
+      .channel(`session-${session.id}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'sign_ins', filter: `session_id=eq.${session.id}` },
+        () => refreshSignIns()
+      )
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'players' },
+        () => loadPlayers()
+      )
+      .subscribe();
+    sessionRef.current = ch;
+    return () => { supabase.removeChannel(ch); };
+  }, [session?.id]);
+
+  // Subscribe to realtime updates for the current battle
+  useEffect(() => {
+    if (battleRef.current) {
+      supabase.removeChannel(battleRef.current);
+      battleRef.current = null;
+    }
+    if (!currentBattleId) return;
+
+    const ch = supabase
+      .channel(`battle-${currentBattleId}`)
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'battle_teams', filter: `battle_id=eq.${currentBattleId}` },
+        (payload) => {
+          setBattleStats((prev) => {
+            const playerId = payload.new.player_id;
+            if (!prev[playerId]) return prev;
+            return {
+              ...prev,
+              [playerId]: { ...prev[playerId], kills: payload.new.kills, deaths: payload.new.deaths }
+            };
+          });
+        }
+      )
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'battle_team_lives', filter: `battle_id=eq.${currentBattleId}` },
+        (payload) => {
+          setTeamLives((prev) => ({ ...prev, [payload.new.team_number]: payload.new.lives_remaining }));
+        }
+      )
+      .subscribe();
+    battleRef.current = ch;
+    return () => { supabase.removeChannel(ch); };
+  }, [currentBattleId]);
+
+  async function refreshSignIns() {
+    if (!session) return;
+    const { data: ins } = await supabase
+      .from('sign_ins').select('player_id').eq('session_id', session.id);
+    setSignedIn(new Set((ins || []).map((r) => r.player_id)));
+  }
+
   async function checkExistingSession() {
     const today = new Date().toISOString().slice(0, 10);
     const { data } = await supabase.from('sessions').select('*').eq('session_date', today).maybeSingle();
@@ -56,28 +127,20 @@ export default function Dashboard() {
     }
   }
 
-  async function endSession() {
-    if (!session) return;
-    if (!confirm("End today's session? Sign-ins and battles will be saved to history. This won't delete anything.")) return;
-    // Just clear local state — session and its data stay in Supabase
+  function endSession() {
+    if (!confirm("End today's session? Sign-ins and battles stay in history.")) return;
     setSession(null);
     setSignedIn(new Set());
-    setSelectedGame(null);
-    setTeams([]);
-    setCurrentBattleId(null);
-    setBattleStats({});
+    resetBattle();
   }
 
   async function deleteSession() {
     if (!session) return;
-    if (!confirm("Delete today's session entirely? Removes all sign-ins and battles for today. This cannot be undone.")) return;
+    if (!confirm("Delete today's session entirely? Removes all sign-ins and battles for today.")) return;
     await supabase.from('sessions').delete().eq('id', session.id);
     setSession(null);
     setSignedIn(new Set());
-    setSelectedGame(null);
-    setTeams([]);
-    setCurrentBattleId(null);
-    setBattleStats({});
+    resetBattle();
   }
 
   async function loadPlayers() {
@@ -121,6 +184,26 @@ export default function Dashboard() {
     setSignedIn(new Set());
   }
 
+  async function addWalkup({ name, belegarth_name, skill_rating }) {
+    if (!session || !name?.trim()) return;
+    // Create the player
+    const { data: newPlayer, error } = await supabase
+      .from('players')
+      .insert({
+        name: name.trim(),
+        belegarth_name: belegarth_name?.trim() || null,
+        skill_rating: Number(skill_rating) || 5,
+        active: true
+      })
+      .select().single();
+    if (error) { alert(error.message); return; }
+    // Sign them in
+    await supabase.from('sign_ins').insert({ session_id: session.id, player_id: newPlayer.id });
+    setShowWalkup(false);
+    await loadPlayers();
+    await refreshSignIns();
+  }
+
   const presentPlayers = useMemo(
     () => players.filter((p) => signedIn.has(p.id)),
     [players, signedIn]
@@ -129,13 +212,19 @@ export default function Dashboard() {
   function pickBattle() {
     const game = pickRandomBattle(games);
     if (!game) {
-      alert('No battle games in the random pool. Add some in the Battle Library.');
+      alert('No battle games in the random pool. Add some in the Battles tab.');
       return;
     }
     setSelectedGame(game);
+    resetBattle();
+  }
+
+  function resetBattle() {
     setTeams([]);
     setCurrentBattleId(null);
     setBattleStats({});
+    setTeamLives({});
+    setTeamLifeRowIds({});
   }
 
   function assignTeams() {
@@ -153,9 +242,10 @@ export default function Dashboard() {
     setTeamLabels(pickTeamLabels(tc));
     setCurrentBattleId(null);
     setBattleStats({});
+    setTeamLives({});
   }
 
-  async function saveBattle() {
+  async function startBattle() {
     if (!session || !selectedGame || !teams.length) return;
     setSaving(true);
     try {
@@ -165,6 +255,7 @@ export default function Dashboard() {
         .select().single();
       if (bErr) throw bErr;
 
+      // Insert team assignments
       const rows = [];
       teams.forEach((team, idx) => {
         team.forEach((p) => {
@@ -180,6 +271,27 @@ export default function Dashboard() {
         stats[r.player_id] = { rowId: r.id, kills: 0, deaths: 0 };
       });
       setBattleStats(stats);
+
+      // Initialize team lives if game uses them
+      if (selectedGame.lives_per_team > 0) {
+        const lifeRows = teams.map((_, idx) => ({
+          battle_id: battle.id,
+          team_number: idx + 1,
+          lives_remaining: selectedGame.lives_per_team
+        }));
+        const { data: insertedLives, error: lErr } = await supabase
+          .from('battle_team_lives').insert(lifeRows).select();
+        if (lErr) throw lErr;
+        const lives = {};
+        const ids = {};
+        insertedLives.forEach((r) => {
+          lives[r.team_number] = r.lives_remaining;
+          ids[r.team_number] = r.id;
+        });
+        setTeamLives(lives);
+        setTeamLifeRowIds(ids);
+      }
+
       setCurrentBattleId(battle.id);
     } catch (err) {
       alert('Save failed: ' + err.message);
@@ -192,29 +304,33 @@ export default function Dashboard() {
     const entry = battleStats[playerId];
     if (!entry) return;
     const next = Math.max(0, (entry[field] || 0) + delta);
-    const updated = { ...battleStats, [playerId]: { ...entry, [field]: next } };
-    setBattleStats(updated);
+    setBattleStats((prev) => ({ ...prev, [playerId]: { ...entry, [field]: next } }));
     await supabase.from('battle_teams').update({ [field]: next }).eq('id', entry.rowId);
+  }
+
+  async function adjustTeamLives(teamNumber, delta) {
+    const rowId = teamLifeRowIds[teamNumber];
+    if (!rowId) return;
+    const current = teamLives[teamNumber] || 0;
+    const next = Math.max(0, current + delta);
+    setTeamLives((prev) => ({ ...prev, [teamNumber]: next }));
+    await supabase.from('battle_team_lives').update({ lives_remaining: next }).eq('id', rowId);
   }
 
   async function declareWinner(teamNumber) {
     if (!currentBattleId) return;
     await supabase.from('battles').update({ winning_team: teamNumber }).eq('id', currentBattleId);
     await loadPlayers();
-    alert(`Team ${teamNumber} declared winner. Stats updated.`);
   }
 
   async function nextBattle() {
     if (currentBattleId) await loadPlayers();
     setSelectedGame(null);
-    setTeams([]);
-    setCurrentBattleId(null);
-    setBattleStats({});
+    resetBattle();
   }
 
   if (loading) return <Loading />;
 
-  // No session today yet — show the start screen
   if (!session) {
     return (
       <div className="card p-8 max-w-md mx-auto text-center">
@@ -236,34 +352,36 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Sign-in section */}
-      <section className="card p-5">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+      <section className="card p-4 sm:p-5">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <div>
             <h2 className="text-xl font-display">Sign-In</h2>
             <p className="text-sm text-ink-700/60">
-              {new Date(session.session_date + 'T00:00:00').toLocaleDateString(undefined, {
-                weekday: 'long', month: 'long', day: 'numeric'
-              })}{' · '}
               <span className="font-semibold text-grass-700">{signedIn.size}</span> of {players.length} present
             </p>
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-1.5 flex-wrap">
+            <button onClick={() => setShowWalkup(true)} className="btn-accent text-sm">
+              <UserPlus className="w-4 h-4" /> Walk-up
+            </button>
             <button onClick={signInAll} className="btn-secondary text-sm">All in</button>
             <button onClick={signOutAll} className="btn-ghost text-sm">Clear</button>
-            <button onClick={endSession} className="btn-ghost text-sm" title="End the session — data is saved">
-              End
-            </button>
-            <button onClick={deleteSession} className="btn-ghost text-sm text-sun-600" title="Delete this session entirely">
+            <button onClick={endSession} className="btn-ghost text-sm">End</button>
+            <button onClick={deleteSession} className="btn-ghost text-sm text-sun-600" title="Delete this session">
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
         </div>
 
+        {showWalkup && (
+          <WalkupForm onAdd={addWalkup} onCancel={() => setShowWalkup(false)} />
+        )}
+
         {players.length === 0 ? (
           <p className="text-ink-700/60 text-sm">
-            No active players yet. Add some in the Roster tab.
+            No active players yet. Add some in the Roster tab or use Walk-up.
           </p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
@@ -304,8 +422,8 @@ export default function Dashboard() {
       </section>
 
       {/* Battle picker */}
-      <section className="card p-5">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+      <section className="card p-4 sm:p-5">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h2 className="text-xl font-display">Battle Selection</h2>
           <div className="flex gap-2 flex-wrap">
             <button onClick={pickBattle} className="btn-accent">
@@ -323,20 +441,24 @@ export default function Dashboard() {
 
         {selectedGame ? (
           <div className="bg-cream-100 border border-grass-200 rounded-lg p-4">
-            <div className="flex items-start justify-between gap-3 mb-2">
+            <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
               <h3 className="font-display text-lg text-grass-700">{selectedGame.name}</h3>
-              <div className="flex gap-2 text-xs">
+              <div className="flex gap-1.5 text-xs flex-wrap">
                 <span className="pill bg-grass-100 text-grass-700">{selectedGame.team_count} teams</span>
                 <span className="pill bg-grass-100 text-grass-700">Min {selectedGame.min_players}</span>
+                {selectedGame.timer_mode !== 'none' && (
+                  <span className="pill bg-sky-100 text-sky-600"><Timer className="w-3 h-3 mr-0.5" /> {selectedGame.timer_mode === 'countdown' ? formatTime(selectedGame.timer_seconds) : 'stopwatch'}</span>
+                )}
+                {selectedGame.lives_per_team > 0 && (
+                  <span className="pill bg-cream-200 text-sun-600"><Heart className="w-3 h-3 mr-0.5" /> {selectedGame.lives_per_team} lives</span>
+                )}
               </div>
             </div>
             {selectedGame.description && (
               <p className="text-sm text-ink-700/80 mb-2">{selectedGame.description}</p>
             )}
             {selectedGame.rules && (
-              <p className="text-sm text-ink-700/60 italic whitespace-pre-line">
-                {selectedGame.rules}
-              </p>
+              <p className="text-sm text-ink-700/60 italic whitespace-pre-line">{selectedGame.rules}</p>
             )}
             {presentPlayers.length < selectedGame.min_players && (
               <p className="text-xs text-sun-600 mt-2 font-semibold">
@@ -351,10 +473,21 @@ export default function Dashboard() {
         )}
       </section>
 
+      {/* Active battle: timer + lives */}
+      {currentBattleId && selectedGame && (
+        <BattleControls
+          game={selectedGame}
+          teams={teams}
+          teamLabels={teamLabels}
+          teamLives={teamLives}
+          onAdjustLives={adjustTeamLives}
+        />
+      )}
+
       {/* Teams */}
       {teams.length > 0 && (
-        <section className="card p-5">
-          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <section className="card p-4 sm:p-5">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
             <h2 className="text-xl font-display">Team Assignments</h2>
             <div className="flex gap-2">
               {!currentBattleId ? (
@@ -362,7 +495,7 @@ export default function Dashboard() {
                   <button onClick={assignTeams} className="btn-ghost text-sm">
                     <RefreshCw className="w-4 h-4" /> Reshuffle
                   </button>
-                  <button onClick={saveBattle} disabled={saving} className="btn-primary text-sm">
+                  <button onClick={startBattle} disabled={saving} className="btn-primary text-sm">
                     <Save className="w-4 h-4" /> {saving ? 'Saving...' : 'Start Battle'}
                   </button>
                 </>
@@ -431,14 +564,222 @@ export default function Dashboard() {
               );
             })}
           </div>
-          {currentBattleId && (
-            <p className="text-xs text-ink-700/50 mt-4">
-              Battle in progress. Tap +/− to track kills and deaths as they happen, then declare a
-              winner. When done, hit <strong>Next Battle</strong> to start another round.
-            </p>
-          )}
         </section>
       )}
+    </div>
+  );
+}
+
+// === SUB-COMPONENTS ===
+
+function WalkupForm({ onAdd, onCancel }) {
+  const [name, setName] = useState('');
+  const [fieldName, setFieldName] = useState('');
+  const [skill, setSkill] = useState(5);
+
+  function submit() {
+    if (!name.trim()) {
+      alert('Name required.');
+      return;
+    }
+    onAdd({ name, belegarth_name: fieldName, skill_rating: skill });
+  }
+
+  return (
+    <div className="bg-grass-50 border-2 border-grass-200 rounded-lg p-3 mb-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-grass-700 text-sm">Quick add walk-up</h3>
+        <button onClick={onCancel} className="p-1 hover:bg-cream-100 rounded">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <input
+          autoFocus
+          className="input w-full" placeholder="Real name *"
+          value={name} onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && submit()}
+        />
+        <input
+          className="input w-full" placeholder="Field name (optional)"
+          value={fieldName} onChange={(e) => setFieldName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && submit()}
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-ink-700/60 w-24">Skill: {Number(skill).toFixed(1)}</span>
+        <input
+          type="range" min="1" max="10" step="0.5"
+          value={skill} onChange={(e) => setSkill(e.target.value)}
+          className="flex-1 accent-grass-600"
+        />
+      </div>
+      <div className="flex justify-end gap-2">
+        <button onClick={onCancel} className="btn-ghost text-sm">Cancel</button>
+        <button onClick={submit} className="btn-primary text-sm">
+          <Check className="w-4 h-4" /> Add & Sign in
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function BattleControls({ game, teams, teamLabels, teamLives, onAdjustLives }) {
+  const hasTimer = game.timer_mode !== 'none';
+  const hasLives = game.lives_per_team > 0;
+  if (!hasTimer && !hasLives) return null;
+
+  return (
+    <section className="card p-4 sm:p-5 bg-gradient-to-br from-grass-50 to-cream-50 border-grass-200">
+      <div className="flex flex-col lg:flex-row gap-4 items-stretch">
+        {hasTimer && (
+          <div className={hasLives ? 'lg:w-1/2' : 'flex-1'}>
+            <BattleTimer mode={game.timer_mode} targetSeconds={game.timer_seconds} />
+          </div>
+        )}
+        {hasLives && (
+          <div className={hasTimer ? 'lg:w-1/2' : 'flex-1'}>
+            <TeamLives
+              teams={teams}
+              teamLabels={teamLabels}
+              teamLives={teamLives}
+              onAdjust={onAdjustLives}
+            />
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function BattleTimer({ mode, targetSeconds }) {
+  const [elapsed, setElapsed] = useState(0);
+  const [running, setRunning] = useState(false);
+  const [alarmed, setAlarmed] = useState(false);
+  const intervalRef = useRef(null);
+
+  useEffect(() => {
+    if (running) {
+      intervalRef.current = setInterval(() => {
+        setElapsed((e) => e + 1);
+      }, 1000);
+    }
+    return () => clearInterval(intervalRef.current);
+  }, [running]);
+
+  // Countdown alarm
+  useEffect(() => {
+    if (mode === 'countdown' && !alarmed && elapsed >= targetSeconds && targetSeconds > 0) {
+      setAlarmed(true);
+      setRunning(false);
+      playAlarm();
+    }
+  }, [elapsed, mode, targetSeconds, alarmed]);
+
+  function playAlarm() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      // Three beeps
+      [0, 0.4, 0.8].forEach((delay) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.frequency.value = 880;
+        osc.connect(gain); gain.connect(ctx.destination);
+        gain.gain.setValueAtTime(0, ctx.currentTime + delay);
+        gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + delay + 0.05);
+        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + delay + 0.3);
+        osc.start(ctx.currentTime + delay);
+        osc.stop(ctx.currentTime + delay + 0.3);
+      });
+    } catch {}
+  }
+
+  function reset() {
+    setRunning(false);
+    setElapsed(0);
+    setAlarmed(false);
+  }
+
+  const display = mode === 'countdown'
+    ? Math.max(0, targetSeconds - elapsed)
+    : elapsed;
+  const m = Math.floor(display / 60);
+  const s = display % 60;
+  const isFinished = mode === 'countdown' && elapsed >= targetSeconds && targetSeconds > 0;
+
+  return (
+    <div className="text-center">
+      <div className="flex items-center justify-center gap-2 mb-2">
+        <Timer className="w-4 h-4 text-grass-700" />
+        <span className="text-sm font-semibold text-ink-700/70">
+          {mode === 'countdown' ? 'Time Remaining' : 'Time Elapsed'}
+        </span>
+      </div>
+      <div className={`font-display text-6xl sm:text-7xl tabular-nums leading-none mb-3 ${
+        isFinished ? 'text-sun-600 animate-pulse' : 'text-ink-900'
+      }`}>
+        {String(m).padStart(2, '0')}:{String(s).padStart(2, '0')}
+      </div>
+      <div className="flex items-center justify-center gap-2">
+        {!running ? (
+          <button onClick={() => setRunning(true)} disabled={isFinished} className="btn-primary disabled:opacity-40">
+            <Play className="w-4 h-4" /> {elapsed === 0 ? 'Start' : 'Resume'}
+          </button>
+        ) : (
+          <button onClick={() => setRunning(false)} className="btn-secondary">
+            <Pause className="w-4 h-4" /> Pause
+          </button>
+        )}
+        <button onClick={reset} className="btn-ghost">
+          <RotateCcw className="w-4 h-4" /> Reset
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TeamLives({ teams, teamLabels, teamLives, onAdjust }) {
+  return (
+    <div>
+      <div className="flex items-center justify-center gap-2 mb-3">
+        <Heart className="w-4 h-4 text-sun-600" />
+        <span className="text-sm font-semibold text-ink-700/70">Team Lives</span>
+      </div>
+      <div className={`grid gap-2 ${teams.length === 2 ? 'grid-cols-2' : teams.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+        {teams.map((_, idx) => {
+          const teamNumber = idx + 1;
+          const label = teamLabels[idx] || `Team ${teamNumber}`;
+          const lives = teamLives[teamNumber] ?? 0;
+          const dead = lives === 0;
+          return (
+            <div key={idx} className={`rounded-lg p-3 border-2 ${dead ? 'bg-ink-700/10 border-ink-700/20' : 'bg-white border-grass-200'}`}>
+              <div className={`text-center text-sm font-semibold mb-1 ${dead ? 'text-ink-700/40 line-through' : 'text-grass-700'}`}>
+                {label}
+              </div>
+              <div className={`text-center font-display text-4xl tabular-nums leading-none mb-2 ${dead ? 'text-ink-700/30' : 'text-ink-900'}`}>
+                {lives}
+              </div>
+              <div className="flex items-center justify-center gap-1">
+                <button
+                  onClick={() => onAdjust(teamNumber, -1)}
+                  disabled={dead}
+                  className="w-9 h-9 rounded-lg bg-sun-500 hover:bg-sun-400 text-white flex items-center justify-center disabled:opacity-30 transition shadow-sm"
+                  title="Death"
+                >
+                  <Minus className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => onAdjust(teamNumber, 1)}
+                  className="w-9 h-9 rounded-lg bg-grass-100 hover:bg-grass-200 text-grass-700 flex items-center justify-center transition"
+                  title="Undo death / add life"
+                >
+                  <Plus className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -447,15 +788,23 @@ function Counter({ label, value, onMinus, onPlus }) {
   return (
     <div className="flex items-center gap-1">
       <span className="text-ink-700/50 w-3">{label}</span>
-      <button onClick={onMinus} className="w-6 h-6 rounded bg-grass-100 hover:bg-grass-200 flex items-center justify-center transition">
+      <button onClick={onMinus} className="w-7 h-7 rounded bg-grass-100 hover:bg-grass-200 flex items-center justify-center transition">
         <Minus className="w-3 h-3" />
       </button>
-      <span className="w-5 text-center font-semibold tabular-nums">{value || 0}</span>
-      <button onClick={onPlus} className="w-6 h-6 rounded bg-grass-100 hover:bg-grass-200 flex items-center justify-center transition">
+      <span className="w-6 text-center font-semibold tabular-nums">{value || 0}</span>
+      <button onClick={onPlus} className="w-7 h-7 rounded bg-grass-100 hover:bg-grass-200 flex items-center justify-center transition">
         <Plus className="w-3 h-3" />
       </button>
     </div>
   );
+}
+
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (m === 0) return `${s}s`;
+  if (s === 0) return `${m}m`;
+  return `${m}m ${s}s`;
 }
 
 function Loading() {

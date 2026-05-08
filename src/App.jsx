@@ -13,7 +13,7 @@ const TABS = [
   { id: 'dashboard', label: 'Today', icon: Calendar },
   { id: 'players', label: 'Roster', icon: Users },
   { id: 'attendance', label: 'Attendance', icon: ClipboardList },
-  { id: 'battles', label: 'Battle Library', icon: BookOpen },
+  { id: 'battles', label: 'Battles', icon: BookOpen },
   { id: 'stats', label: 'Stats', icon: BarChart3 },
   { id: 'history', label: 'History', icon: Trees }
 ];
@@ -23,23 +23,23 @@ export default function App() {
   const [configured, setConfigured] = useState(true);
   const { authed, ready } = useAuth();
 
-  useEffect(() => {
-    setConfigured(isConfigured());
-  }, []);
+  useEffect(() => { setConfigured(isConfigured()); }, []);
 
-  if (!ready) return null; // brief flash while checking stored auth
+  if (!ready) return null;
   if (!authed) return <LoginScreen />;
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="border-b border-grass-100 bg-white/80 backdrop-blur sticky top-0 z-20">
+      <header className="border-b border-grass-100 bg-white/90 backdrop-blur sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-grass-500 to-grass-700 flex items-center justify-center shadow-sm">
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-grass-500 to-grass-700 flex items-center justify-center shadow-sm flex-shrink-0">
             <Sun className="w-6 h-6 text-cream-50" />
           </div>
           <h1 className="text-2xl font-display text-ink-900 leading-none">The Park</h1>
         </div>
-        <nav className="max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto">
+
+        {/* Desktop: horizontal tabs */}
+        <nav className="hidden sm:flex max-w-6xl mx-auto px-4 gap-1">
           {TABS.map((t) => {
             const Icon = t.icon;
             const active = tab === t.id;
@@ -59,9 +59,31 @@ export default function App() {
             );
           })}
         </nav>
+
+        {/* Mobile: 3-column grid, all tabs visible at once */}
+        <nav className="sm:hidden grid grid-cols-3 gap-1 p-2 border-t border-grass-100">
+          {TABS.map((t) => {
+            const Icon = t.icon;
+            const active = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`flex flex-col items-center justify-center gap-1 py-2 rounded-lg text-xs font-semibold transition ${
+                  active
+                    ? 'bg-grass-100 text-grass-700'
+                    : 'text-ink-700/60 hover:bg-cream-100 hover:text-ink-900'
+                }`}
+              >
+                <Icon className="w-5 h-5" />
+                {t.label}
+              </button>
+            );
+          })}
+        </nav>
       </header>
 
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-6">
+      <main className="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-4 py-4 sm:py-6">
         {!configured && <ConfigBanner />}
         {configured && (
           <>
