@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Trees, Users, Calendar, BarChart3, BookOpen, AlertCircle, Sun, ClipboardList } from 'lucide-react';
+import {
+  Trees, Users, Calendar, BarChart3, BookOpen, AlertCircle, Sun,
+  ClipboardList, Swords, Crown
+} from 'lucide-react';
 import { isConfigured } from './lib/supabase';
 import { useAuth, LoginScreen, LogoutButton } from './lib/auth.jsx';
 import Dashboard from './components/Dashboard.jsx';
@@ -8,12 +11,16 @@ import BattleLibrary from './components/BattleLibrary.jsx';
 import Stats from './components/Stats.jsx';
 import History from './components/History.jsx';
 import Attendance from './components/Attendance.jsx';
+import Tournaments from './components/Tournaments.jsx';
+import Campaigns from './components/Campaigns.jsx';
 
 const TABS = [
   { id: 'dashboard', label: 'Today', icon: Calendar },
   { id: 'players', label: 'Roster', icon: Users },
   { id: 'attendance', label: 'Attendance', icon: ClipboardList },
   { id: 'battles', label: 'Battles', icon: BookOpen },
+  { id: 'tournaments', label: 'Tournaments', icon: Swords },
+  { id: 'campaigns', label: 'Campaigns', icon: Crown },
   { id: 'stats', label: 'Stats', icon: BarChart3 },
   { id: 'history', label: 'History', icon: Trees }
 ];
@@ -39,7 +46,7 @@ export default function App() {
         </div>
 
         {/* Desktop: horizontal tabs */}
-        <nav className="hidden sm:flex max-w-6xl mx-auto px-4 gap-1">
+        <nav className="hidden sm:flex max-w-6xl mx-auto px-4 gap-1 overflow-x-auto">
           {TABS.map((t) => {
             const Icon = t.icon;
             const active = tab === t.id;
@@ -47,7 +54,7 @@ export default function App() {
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition whitespace-nowrap ${
+                className={`flex items-center gap-2 px-3 lg:px-4 py-3 text-sm font-semibold border-b-2 transition whitespace-nowrap ${
                   active
                     ? 'border-grass-600 text-grass-700'
                     : 'border-transparent text-ink-700/60 hover:text-ink-900 hover:border-grass-200'
@@ -60,8 +67,8 @@ export default function App() {
           })}
         </nav>
 
-        {/* Mobile: 3-column grid, all tabs visible at once */}
-        <nav className="sm:hidden grid grid-cols-3 gap-1 p-2 border-t border-grass-100">
+        {/* Mobile: 4-column grid (2 rows of 4) */}
+        <nav className="sm:hidden grid grid-cols-4 gap-1 p-2 border-t border-grass-100">
           {TABS.map((t) => {
             const Icon = t.icon;
             const active = tab === t.id;
@@ -69,7 +76,7 @@ export default function App() {
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className={`flex flex-col items-center justify-center gap-1 py-2 rounded-lg text-xs font-semibold transition ${
+                className={`flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-lg text-[10px] font-semibold transition ${
                   active
                     ? 'bg-grass-100 text-grass-700'
                     : 'text-ink-700/60 hover:bg-cream-100 hover:text-ink-900'
@@ -91,6 +98,8 @@ export default function App() {
             {tab === 'players' && <Players />}
             {tab === 'attendance' && <Attendance />}
             {tab === 'battles' && <BattleLibrary />}
+            {tab === 'tournaments' && <Tournaments />}
+            {tab === 'campaigns' && <Campaigns />}
             {tab === 'stats' && <Stats />}
             {tab === 'history' && <History />}
           </>
