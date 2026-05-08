@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, Edit3, Check, X, BookPlus, Timer, Heart } from 'lucide-react';
+import { Plus, Trash2, Edit3, Check, X, BookPlus, Timer, Heart, Swords, User } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 export default function BattleLibrary() {
@@ -22,12 +22,14 @@ export default function BattleLibrary() {
       alert('Name is required.');
       return;
     }
+    const isFFA = game.format === 'ffa';
     const payload = {
       name: game.name.trim(),
       description: game.description?.trim() || null,
       rules: game.rules?.trim() || null,
       min_players: Number(game.min_players) || 4,
-      team_count: Number(game.team_count) || 2,
+      team_count: isFFA ? 1 : (Number(game.team_count) || 2),
+      format: game.format || 'teams',
       in_pool: game.in_pool !== false,
       timer_mode: game.timer_mode || 'none',
       timer_seconds: Number(game.timer_seconds) || 0,
@@ -96,7 +98,11 @@ export default function BattleLibrary() {
                 </div>
               </div>
               <div className="flex gap-1.5 text-xs mb-2 flex-wrap">
-                <span className="pill bg-grass-100 text-grass-700">{g.team_count} teams</span>
+                {g.format === 'ffa' ? (
+                  <span className="pill bg-sun-500/20 text-sun-600"><User className="w-3 h-3 mr-0.5" /> Free-for-all</span>
+                ) : (
+                  <span className="pill bg-grass-100 text-grass-700"><Swords className="w-3 h-3 mr-0.5" /> {g.team_count} teams</span>
+                )}
                 <span className="pill bg-grass-100 text-grass-700">Min {g.min_players}</span>
                 {g.timer_mode === 'countdown' && (
                   <span className="pill bg-sky-100 text-sky-600"><Timer className="w-3 h-3 mr-0.5" /> {formatTime(g.timer_seconds)} countdown</span>
@@ -105,7 +111,10 @@ export default function BattleLibrary() {
                   <span className="pill bg-sky-100 text-sky-600"><Timer className="w-3 h-3 mr-0.5" /> stopwatch</span>
                 )}
                 {g.lives_per_team > 0 && (
-                  <span className="pill bg-cream-200 text-sun-600"><Heart className="w-3 h-3 mr-0.5" /> {g.lives_per_team} lives/team</span>
+                  <span className="pill bg-cream-200 text-sun-600">
+                    <Heart className="w-3 h-3 mr-0.5" />
+                    {g.lives_per_team} {g.format === 'ffa' ? 'lives/fighter' : 'lives/team'}
+                  </span>
                 )}
                 <button
                   onClick={() => togglePool(g)}
@@ -139,11 +148,13 @@ function formatTime(seconds) {
 
 function GameForm({ initial = {}, onSave, onCancel }) {
   const [form, setForm] = useState({
-    name: '', description: '', rules: '', min_players: 4, team_count: 2, in_pool: true,
+    name: '', description: '', rules: '', min_players: 4, team_count: 2,
+    format: 'teams', in_pool: true,
     timer_mode: 'none', timer_seconds: 0, lives_per_team: 0,
     ...initial
   });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const isFFA = form.format === 'ffa';
 
   return (
     <div className="card p-4 space-y-3">
@@ -152,17 +163,27 @@ function GameForm({ initial = {}, onSave, onCancel }) {
           <label className="label">Name *</label>
           <input className="input w-full" value={form.name} onChange={(e) => set('name', e.target.value)} autoFocus />
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="label">Format</label>
+          <select className="input w-full" value={form.format} onChange={(e) => set('format', e.target.value)}>
+            <option value="teams">Team battle</option>
+            <option value="ffa">Free-for-all (every fighter for themselves)</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {!isFFA && (
           <div>
-            <label className="label">Teams</label>
+            <label className="label">Number of Teams</label>
             <input type="number" min="2" max="6" className="input w-full"
               value={form.team_count} onChange={(e) => set('team_count', e.target.value)} />
           </div>
-          <div>
-            <label className="label">Min Players</label>
-            <input type="number" min="2" className="input w-full"
-              value={form.min_players} onChange={(e) => set('min_players', e.target.value)} />
-          </div>
+        )}
+        <div className={isFFA ? 'md:col-span-2' : ''}>
+          <label className="label">Min Players</label>
+          <input type="number" min="2" className="input w-full"
+            value={form.min_players} onChange={(e) => set('min_players', e.target.value)} />
         </div>
       </div>
       <div>
@@ -204,20 +225,22 @@ function GameForm({ initial = {}, onSave, onCancel }) {
         </div>
       </div>
 
-      {/* Team lives */}
+      {/* Lives */}
       <div className="border-t border-grass-100 pt-3">
         <h4 className="text-sm font-semibold text-ink-700 mb-2 flex items-center gap-1">
-          <Heart className="w-4 h-4" /> Team Lives
+          <Heart className="w-4 h-4" /> {isFFA ? 'Lives per fighter' : 'Team Lives'}
         </h4>
         <div>
-          <label className="label">Lives per team (0 = unlimited)</label>
+          <label className="label">{isFFA ? 'Lives per fighter (0 = unlimited)' : 'Lives per team (0 = unlimited)'}</label>
           <input type="number" min="0" max="99" className="input w-full"
             value={form.lives_per_team}
             onChange={(e) => set('lives_per_team', e.target.value)}
-            placeholder="0 = no life pool, 5 = 5 lives per team"
+            placeholder={isFFA ? '0 = no limit, 3 = each fighter has 3 lives' : '0 = no limit, 5 = 5 lives per team'}
           />
           <p className="text-xs text-ink-700/50 mt-1">
-            Each team starts with this many lives. When a team's pool hits zero, they lose.
+            {isFFA
+              ? "Each fighter starts with this many lives. Out of lives = out of the fight."
+              : "Each team starts with this many lives. When a team's pool hits zero, they lose."}
           </p>
         </div>
       </div>

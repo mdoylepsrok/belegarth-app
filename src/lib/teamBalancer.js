@@ -1,11 +1,8 @@
-﻿/**
+/**
  * Team balancing utilities.
  *
- * balanceTeams() takes a list of present players (each with a `score` value)
- * and distributes them across N teams using a snake draft so total team
- * scores are as even as possible.
- *
- * Score = skill_rating * 10 + min(kd_ratio, 5) * 4 + win_pct/10
+ * For team battles: balanceTeams() snake-drafts present players across N teams.
+ * For FFA: buildFfaLineup() makes each fighter their own one-player "team".
  */
 
 export function computePlayerScore(p) {
@@ -40,6 +37,13 @@ export function balanceTeams(players, teamCount = 2) {
   }
 
   return teams.map((team) => shuffleInPlace([...team]));
+}
+
+/** Each fighter is their own one-player "team" — for FFA battles. */
+export function buildFfaLineup(players) {
+  if (!players?.length) return [];
+  const shuffled = shuffleInPlace([...players]);
+  return shuffled.map((p) => [{ ...p, _score: computePlayerScore(p) }]);
 }
 
 export function teamTotal(team) {

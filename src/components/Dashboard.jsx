@@ -2,10 +2,10 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import {
   Dices, Shuffle, Save, Trophy, RefreshCw, Plus, Minus,
   CheckCircle2, Swords, PlayCircle, Trash2, UserPlus, X, Check,
-  Timer, Play, Pause, RotateCcw, Heart, UserX
+  Timer, Play, Pause, RotateCcw, Heart, UserX, User
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { balanceTeams, pickRandomBattle, pickTeamLabels, teamTotal } from '../lib/teamBalancer';
+import { balanceTeams, buildFfaLineup, pickRandomBattle, pickTeamLabels, teamTotal } from '../lib/teamBalancer';
 
 export default function Dashboard() {
   const [session, setSession] = useState(null);
@@ -17,16 +17,17 @@ export default function Dashboard() {
   const [teamLabels, setTeamLabels] = useState([]);
   const [currentBattleId, setCurrentBattleId] = useState(null);
   const [battleStats, setBattleStats] = useState({});
-  const [teamLives, setTeamLives] = useState({}); // { team_number: lives_remaining }
-  const [teamLifeRowIds, setTeamLifeRowIds] = useState({}); // { team_number: row_id }
+  const [teamLives, setTeamLives] = useState({});
+  const [teamLifeRowIds, setTeamLifeRowIds] = useState({});
   const [showWalkup, setShowWalkup] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [starting, setStarting] = useState(false);
 
-  // Refs for realtime cleanup
   const sessionRef = useRef(null);
   const battleRef = useRef(null);
+
+  const isFFA = selectedGame?.format === 'ffa';
 
   useEffect(() => { init(); }, []);
 
@@ -36,7 +37,7 @@ export default function Dashboard() {
     setLoading(false);
   }
 
-  // Subscribe to realtime sign-in changes for the current session
+  // Realtime: sign-ins
   useEffect(() => {
     if (sessionRef.current) {
       supabase.removeChannel(sessionRef.current);
@@ -59,7 +60,7 @@ export default function Dashboard() {
     return () => { supabase.removeChannel(ch); };
   }, [session?.id]);
 
-  // Subscribe to realtime updates for the current battle
+  // Realtime: battle stats + lives
   useEffect(() => {
     if (battleRef.current) {
       supabase.removeChannel(battleRef.current);
@@ -186,7 +187,6 @@ export default function Dashboard() {
 
   async function addWalkup({ name, belegarth_name, skill_rating }) {
     if (!session || !name?.trim()) return;
-    // Create the player
     const { data: newPlayer, error } = await supabase
       .from('players')
       .insert({
@@ -197,7 +197,6 @@ export default function Dashboard() {
       })
       .select().single();
     if (error) { alert(error.message); return; }
-    // Sign them in
     await supabase.from('sign_ins').insert({ session_id: session.id, player_id: newPlayer.id });
     setShowWalkup(false);
     await loadPlayers();
@@ -212,7 +211,9 @@ export default function Dashboard() {
   function pickBattle() {
     const game = pickRandomBattle(games, presentPlayers.length);
     if (!game) {
-      alert('No battle games in the random pool. Add some in the Battles tab.');
+      alert(presentPlayers.length === 0
+        ? 'Sign in some fighters first.'
+        : `No battles in the random pool work for ${presentPlayers.length} fighter(s). Add more battle types or sign in more fighters.`);
       return;
     }
     setSelectedGame(game);
@@ -236,10 +237,18 @@ export default function Dashboard() {
       alert(`Need at least ${selectedGame.min_players} players for ${selectedGame.name}.`);
       return;
     }
-    const tc = selectedGame.team_count || 2;
-    const balanced = balanceTeams(presentPlayers, tc);
-    setTeams(balanced);
-    setTeamLabels(pickTeamLabels(tc));
+
+    let lineup, labels;
+    if (selectedGame.format === 'ffa') {
+      lineup = buildFfaLineup(presentPlayers);
+      labels = lineup.map((t) => t[0].belegarth_name || t[0].name);
+    } else {
+      const tc = selectedGame.team_count || 2;
+      lineup = balanceTeams(presentPlayers, tc);
+      labels = pickTeamLabels(tc);
+    }
+    setTeams(lineup);
+    setTeamLabels(labels);
     setCurrentBattleId(null);
     setBattleStats({});
     setTeamLives({});
@@ -255,7 +264,6 @@ export default function Dashboard() {
         .select().single();
       if (bErr) throw bErr;
 
-      // Insert team assignments
       const rows = [];
       teams.forEach((team, idx) => {
         team.forEach((p) => {
@@ -272,7 +280,6 @@ export default function Dashboard() {
       });
       setBattleStats(stats);
 
-      // Initialize team lives if game uses them
       if (selectedGame.lives_per_team > 0) {
         const lifeRows = teams.map((_, idx) => ({
           battle_id: battle.id,
@@ -434,7 +441,7 @@ export default function Dashboard() {
               disabled={!selectedGame || presentPlayers.length < (selectedGame?.min_players || 2)}
               className="btn-primary disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <Shuffle className="w-4 h-4" /> Assign Teams
+              <Shuffle className="w-4 h-4" /> {isFFA ? 'Set Lineup' : 'Assign Teams'}
             </button>
           </div>
         </div>
@@ -444,13 +451,20 @@ export default function Dashboard() {
             <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
               <h3 className="font-display text-lg text-grass-700">{selectedGame.name}</h3>
               <div className="flex gap-1.5 text-xs flex-wrap">
-                <span className="pill bg-grass-100 text-grass-700">{selectedGame.team_count} teams</span>
+                {isFFA ? (
+                  <span className="pill bg-sun-500/20 text-sun-600"><User className="w-3 h-3 mr-0.5" /> Free-for-all</span>
+                ) : (
+                  <span className="pill bg-grass-100 text-grass-700">{selectedGame.team_count} teams</span>
+                )}
                 <span className="pill bg-grass-100 text-grass-700">Min {selectedGame.min_players}</span>
                 {selectedGame.timer_mode !== 'none' && (
                   <span className="pill bg-sky-100 text-sky-600"><Timer className="w-3 h-3 mr-0.5" /> {selectedGame.timer_mode === 'countdown' ? formatTime(selectedGame.timer_seconds) : 'stopwatch'}</span>
                 )}
                 {selectedGame.lives_per_team > 0 && (
-                  <span className="pill bg-cream-200 text-sun-600"><Heart className="w-3 h-3 mr-0.5" /> {selectedGame.lives_per_team} lives</span>
+                  <span className="pill bg-cream-200 text-sun-600">
+                    <Heart className="w-3 h-3 mr-0.5" />
+                    {selectedGame.lives_per_team} {isFFA ? 'lives/fighter' : 'lives'}
+                  </span>
                 )}
               </div>
             </div>
@@ -473,7 +487,7 @@ export default function Dashboard() {
         )}
       </section>
 
-      {/* Active battle: timer + lives */}
+      {/* Active battle controls (timer + lives) */}
       {currentBattleId && selectedGame && (
         <BattleControls
           game={selectedGame}
@@ -481,19 +495,20 @@ export default function Dashboard() {
           teamLabels={teamLabels}
           teamLives={teamLives}
           onAdjustLives={adjustTeamLives}
+          isFFA={isFFA}
         />
       )}
 
-      {/* Teams */}
+      {/* Lineup */}
       {teams.length > 0 && (
         <section className="card p-4 sm:p-5">
           <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-            <h2 className="text-xl font-display">Team Assignments</h2>
+            <h2 className="text-xl font-display">{isFFA ? 'Fighters' : 'Team Assignments'}</h2>
             <div className="flex gap-2">
               {!currentBattleId ? (
                 <>
                   <button onClick={assignTeams} className="btn-ghost text-sm">
-                    <RefreshCw className="w-4 h-4" /> Reshuffle
+                    <RefreshCw className="w-4 h-4" /> {isFFA ? 'Reshuffle' : 'Reshuffle'}
                   </button>
                   <button onClick={startBattle} disabled={saving} className="btn-primary text-sm">
                     <Save className="w-4 h-4" /> {saving ? 'Saving...' : 'Start Battle'}
@@ -507,63 +522,25 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className={`grid gap-4 ${
-            teams.length === 2 ? 'md:grid-cols-2' :
-            teams.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2 lg:grid-cols-3'
-          }`}>
-            {teams.map((team, idx) => {
-              const total = teamTotal(team);
-              const label = teamLabels[idx] || `Team ${idx + 1}`;
-              const teamNumber = idx + 1;
-              return (
-                <div key={idx} className="bg-cream-50 border border-grass-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-display text-grass-700 text-lg">{label}</h3>
-                    <span className="text-xs text-ink-700/50">
-                      {team.length} · {total.toFixed(0)} pts
-                    </span>
-                  </div>
-                  <ul className="space-y-1.5">
-                    {team.map((p) => {
-                      const stats = battleStats[p.id];
-                      return (
-                        <li key={p.id} className="text-sm">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="truncate font-medium">{p.belegarth_name || p.name}</span>
-                            {!stats && (
-                              <span className="text-xs text-ink-700/40">{Number(p.skill_rating).toFixed(1)}</span>
-                            )}
-                          </div>
-                          {stats && (
-                            <div className="flex items-center justify-end gap-3 mt-1 text-xs">
-                              <Counter
-                                label="K" value={stats.kills}
-                                onMinus={() => adjustStat(p.id, 'kills', -1)}
-                                onPlus={() => adjustStat(p.id, 'kills', 1)}
-                              />
-                              <Counter
-                                label="D" value={stats.deaths}
-                                onMinus={() => adjustStat(p.id, 'deaths', -1)}
-                                onPlus={() => adjustStat(p.id, 'deaths', 1)}
-                              />
-                            </div>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  {currentBattleId && (
-                    <button
-                      onClick={() => declareWinner(teamNumber)}
-                      className="mt-3 w-full btn-secondary text-xs justify-center"
-                    >
-                      <Trophy className="w-3 h-3" /> {label} Won
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          {isFFA ? (
+            <FFAGrid
+              teams={teams}
+              teamLabels={teamLabels}
+              battleStats={battleStats}
+              currentBattleId={currentBattleId}
+              onAdjustStat={adjustStat}
+              onDeclareWinner={declareWinner}
+            />
+          ) : (
+            <TeamGrid
+              teams={teams}
+              teamLabels={teamLabels}
+              battleStats={battleStats}
+              currentBattleId={currentBattleId}
+              onAdjustStat={adjustStat}
+              onDeclareWinner={declareWinner}
+            />
+          )}
         </section>
       )}
     </div>
@@ -571,6 +548,113 @@ export default function Dashboard() {
 }
 
 // === SUB-COMPONENTS ===
+
+function TeamGrid({ teams, teamLabels, battleStats, currentBattleId, onAdjustStat, onDeclareWinner }) {
+  return (
+    <div className={`grid gap-4 ${
+      teams.length === 2 ? 'md:grid-cols-2' :
+      teams.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2 lg:grid-cols-3'
+    }`}>
+      {teams.map((team, idx) => {
+        const total = teamTotal(team);
+        const label = teamLabels[idx] || `Team ${idx + 1}`;
+        const teamNumber = idx + 1;
+        return (
+          <div key={idx} className="bg-cream-50 border border-grass-200 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-display text-grass-700 text-lg">{label}</h3>
+              <span className="text-xs text-ink-700/50">
+                {team.length} · {total.toFixed(0)} pts
+              </span>
+            </div>
+            <ul className="space-y-1.5">
+              {team.map((p) => {
+                const stats = battleStats[p.id];
+                return (
+                  <li key={p.id} className="text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate font-medium">{p.belegarth_name || p.name}</span>
+                      {!stats && (
+                        <span className="text-xs text-ink-700/40">{Number(p.skill_rating).toFixed(1)}</span>
+                      )}
+                    </div>
+                    {stats && (
+                      <div className="flex items-center justify-end gap-3 mt-1 text-xs">
+                        <Counter
+                          label="K" value={stats.kills}
+                          onMinus={() => onAdjustStat(p.id, 'kills', -1)}
+                          onPlus={() => onAdjustStat(p.id, 'kills', 1)}
+                        />
+                        <Counter
+                          label="D" value={stats.deaths}
+                          onMinus={() => onAdjustStat(p.id, 'deaths', -1)}
+                          onPlus={() => onAdjustStat(p.id, 'deaths', 1)}
+                        />
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+            {currentBattleId && (
+              <button
+                onClick={() => onDeclareWinner(teamNumber)}
+                className="mt-3 w-full btn-secondary text-xs justify-center"
+              >
+                <Trophy className="w-3 h-3" /> {label} Won
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function FFAGrid({ teams, teamLabels, battleStats, currentBattleId, onAdjustStat, onDeclareWinner }) {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+      {teams.map((team, idx) => {
+        const player = team[0];
+        const stats = battleStats[player.id];
+        const teamNumber = idx + 1;
+        const label = teamLabels[idx] || player.name;
+        return (
+          <div key={player.id} className="bg-cream-50 border border-grass-200 rounded-lg p-2.5">
+            <div className="text-center mb-2">
+              <div className="font-semibold text-sm truncate">{label}</div>
+              {!stats && (
+                <div className="text-xs text-ink-700/40">Skill {Number(player.skill_rating).toFixed(1)}</div>
+              )}
+            </div>
+            {stats && (
+              <div className="flex items-center justify-center gap-2 text-xs mb-2">
+                <Counter
+                  label="K" value={stats.kills}
+                  onMinus={() => onAdjustStat(player.id, 'kills', -1)}
+                  onPlus={() => onAdjustStat(player.id, 'kills', 1)}
+                />
+                <Counter
+                  label="D" value={stats.deaths}
+                  onMinus={() => onAdjustStat(player.id, 'deaths', -1)}
+                  onPlus={() => onAdjustStat(player.id, 'deaths', 1)}
+                />
+              </div>
+            )}
+            {currentBattleId && (
+              <button
+                onClick={() => onDeclareWinner(teamNumber)}
+                className="w-full btn-secondary text-xs justify-center px-1"
+              >
+                <Trophy className="w-3 h-3" /> Winner
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function WalkupForm({ onAdd, onCancel }) {
   const [name, setName] = useState('');
@@ -624,7 +708,7 @@ function WalkupForm({ onAdd, onCancel }) {
   );
 }
 
-function BattleControls({ game, teams, teamLabels, teamLives, onAdjustLives }) {
+function BattleControls({ game, teams, teamLabels, teamLives, onAdjustLives, isFFA }) {
   const hasTimer = game.timer_mode !== 'none';
   const hasLives = game.lives_per_team > 0;
   if (!hasTimer && !hasLives) return null;
@@ -639,11 +723,12 @@ function BattleControls({ game, teams, teamLabels, teamLives, onAdjustLives }) {
         )}
         {hasLives && (
           <div className={hasTimer ? 'lg:w-1/2' : 'flex-1'}>
-            <TeamLives
+            <Lives
               teams={teams}
               teamLabels={teamLabels}
               teamLives={teamLives}
               onAdjust={onAdjustLives}
+              isFFA={isFFA}
             />
           </div>
         )}
@@ -660,14 +745,11 @@ function BattleTimer({ mode, targetSeconds }) {
 
   useEffect(() => {
     if (running) {
-      intervalRef.current = setInterval(() => {
-        setElapsed((e) => e + 1);
-      }, 1000);
+      intervalRef.current = setInterval(() => setElapsed((e) => e + 1), 1000);
     }
     return () => clearInterval(intervalRef.current);
   }, [running]);
 
-  // Countdown alarm
   useEffect(() => {
     if (mode === 'countdown' && !alarmed && elapsed >= targetSeconds && targetSeconds > 0) {
       setAlarmed(true);
@@ -679,7 +761,6 @@ function BattleTimer({ mode, targetSeconds }) {
   function playAlarm() {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      // Three beeps
       [0, 0.4, 0.8].forEach((delay) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -738,42 +819,56 @@ function BattleTimer({ mode, targetSeconds }) {
   );
 }
 
-function TeamLives({ teams, teamLabels, teamLives, onAdjust }) {
+function Lives({ teams, teamLabels, teamLives, onAdjust, isFFA }) {
+  // Use a denser grid for FFA (many one-person "teams")
+  const gridClass = isFFA
+    ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'
+    : (teams.length === 2 ? 'grid-cols-2' : teams.length === 3 ? 'grid-cols-3' : 'grid-cols-2');
+
   return (
     <div>
       <div className="flex items-center justify-center gap-2 mb-3">
         <Heart className="w-4 h-4 text-sun-600" />
-        <span className="text-sm font-semibold text-ink-700/70">Team Lives</span>
+        <span className="text-sm font-semibold text-ink-700/70">
+          {isFFA ? 'Fighter Lives' : 'Team Lives'}
+        </span>
       </div>
-      <div className={`grid gap-2 ${teams.length === 2 ? 'grid-cols-2' : teams.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+      <div className={`grid gap-2 ${gridClass}`}>
         {teams.map((_, idx) => {
           const teamNumber = idx + 1;
           const label = teamLabels[idx] || `Team ${teamNumber}`;
           const lives = teamLives[teamNumber] ?? 0;
           const dead = lives === 0;
+          const compact = isFFA;
           return (
-            <div key={idx} className={`rounded-lg p-3 border-2 ${dead ? 'bg-ink-700/10 border-ink-700/20' : 'bg-white border-grass-200'}`}>
-              <div className={`text-center text-sm font-semibold mb-1 ${dead ? 'text-ink-700/40 line-through' : 'text-grass-700'}`}>
+            <div key={idx} className={`rounded-lg ${compact ? 'p-2' : 'p-3'} border-2 ${
+              dead ? 'bg-ink-700/10 border-ink-700/20' : 'bg-white border-grass-200'
+            }`}>
+              <div className={`text-center ${compact ? 'text-xs' : 'text-sm'} font-semibold mb-1 truncate ${
+                dead ? 'text-ink-700/40 line-through' : 'text-grass-700'
+              }`}>
                 {label}
               </div>
-              <div className={`text-center font-display text-4xl tabular-nums leading-none mb-2 ${dead ? 'text-ink-700/30' : 'text-ink-900'}`}>
+              <div className={`text-center font-display ${compact ? 'text-2xl' : 'text-4xl'} tabular-nums leading-none mb-2 ${
+                dead ? 'text-ink-700/30' : 'text-ink-900'
+              }`}>
                 {lives}
               </div>
               <div className="flex items-center justify-center gap-1">
                 <button
                   onClick={() => onAdjust(teamNumber, -1)}
                   disabled={dead}
-                  className="w-9 h-9 rounded-lg bg-sun-500 hover:bg-sun-400 text-white flex items-center justify-center disabled:opacity-30 transition shadow-sm"
+                  className={`${compact ? 'w-7 h-7' : 'w-9 h-9'} rounded-lg bg-sun-500 hover:bg-sun-400 text-white flex items-center justify-center disabled:opacity-30 transition shadow-sm`}
                   title="Death"
                 >
-                  <Minus className="w-5 h-5" />
+                  <Minus className={compact ? 'w-4 h-4' : 'w-5 h-5'} />
                 </button>
                 <button
                   onClick={() => onAdjust(teamNumber, 1)}
-                  className="w-9 h-9 rounded-lg bg-grass-100 hover:bg-grass-200 text-grass-700 flex items-center justify-center transition"
+                  className={`${compact ? 'w-7 h-7' : 'w-9 h-9'} rounded-lg bg-grass-100 hover:bg-grass-200 text-grass-700 flex items-center justify-center transition`}
                   title="Undo death / add life"
                 >
-                  <Plus className="w-5 h-5" />
+                  <Plus className={compact ? 'w-4 h-4' : 'w-5 h-5'} />
                 </button>
               </div>
             </div>
