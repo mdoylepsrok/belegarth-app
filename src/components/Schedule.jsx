@@ -2,11 +2,12 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import {
   Calendar, MapPin, Link as LinkIcon, Plus, Trash2, Edit3, Check, X,
   ChevronDown, ChevronRight, Sparkles, Trophy, Users, Star, Crown,
-  ThumbsUp, HelpCircle, ThumbsDown, UserCircle
+  ThumbsUp, HelpCircle, ThumbsDown, UserCircle, Zap
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useIdentity } from '../lib/identity.jsx';
 import Dashboard from './Dashboard.jsx';
+import QuickBattleTool from './QuickBattleTool.jsx';
 
 const EVENT_TYPES = {
   practice: { label: 'Practice', icon: Calendar, color: 'text-grass-700 bg-grass-100' },
@@ -24,6 +25,7 @@ export default function Schedule() {
   const [editingId, setEditingId] = useState(null);
   const [showPast, setShowPast] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [quickOpen, setQuickOpen] = useState(false);
   const channelRef = useRef(null);
 
   useEffect(() => { load(); }, []);
@@ -111,6 +113,7 @@ export default function Schedule() {
   }
 
   return (
+    <>
     <div className="space-y-4 sm:space-y-6">
       {/* Today's event banner */}
       {todaysEvent && (
@@ -123,6 +126,23 @@ export default function Schedule() {
 
       {/* Today's session UI - existing Dashboard */}
       <Dashboard />
+
+      {/* Quick battle tool launcher */}
+      <button
+        onClick={() => setQuickOpen(true)}
+        className="card w-full p-3 flex items-center justify-between hover:bg-grass-50 transition border-grass-200 text-left"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-sun-400 to-sun-500 flex items-center justify-center flex-shrink-0">
+            <Zap className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <div className="font-semibold text-sm">Quick Battle Tools</div>
+            <div className="text-xs text-ink-700/60">Standalone timer & life counter — no setup needed</div>
+          </div>
+        </div>
+        <ChevronRight className="w-4 h-4 text-ink-700/40" />
+      </button>
 
       {/* Identity nudge */}
       <IdentityNudge />
@@ -211,6 +231,8 @@ export default function Schedule() {
         </section>
       )}
     </div>
+    <QuickBattleTool open={quickOpen} onClose={() => setQuickOpen(false)} />
+    </>
   );
 }
 

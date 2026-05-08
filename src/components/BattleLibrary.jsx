@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, Edit3, Check, X, BookPlus, Timer, Heart, Swords, User } from 'lucide-react';
+import { Plus, Trash2, Edit3, Check, X, BookPlus, Timer, Heart, Swords, User, Zap } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import QuickBattleTool from './QuickBattleTool.jsx';
 
 export default function BattleLibrary() {
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
   const [adding, setAdding] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
 
   useEffect(() => { load(); }, []);
 
@@ -61,6 +63,7 @@ export default function BattleLibrary() {
   if (loading) return <p className="text-ink-700/60">Loading library...</p>;
 
   return (
+    <>
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -69,11 +72,16 @@ export default function BattleLibrary() {
             {games.length} battle types · {games.filter((g) => g.in_pool).length} in random pool
           </p>
         </div>
-        {!adding && (
-          <button onClick={() => setAdding(true)} className="btn-primary">
-            <BookPlus className="w-4 h-4" /> Add Battle Type
+        <div className="flex gap-2">
+          <button onClick={() => setQuickOpen(true)} className="btn-accent">
+            <Zap className="w-4 h-4" /> Quick Battle
           </button>
-        )}
+          {!adding && (
+            <button onClick={() => setAdding(true)} className="btn-primary">
+              <BookPlus className="w-4 h-4" /> Add Battle Type
+            </button>
+          )}
+        </div>
       </div>
 
       {adding && <GameForm onSave={saveGame} onCancel={() => setAdding(false)} />}
@@ -135,6 +143,8 @@ export default function BattleLibrary() {
         )}
       </div>
     </div>
+    <QuickBattleTool open={quickOpen} onClose={() => setQuickOpen(false)} />
+    </>
   );
 }
 
