@@ -14,6 +14,7 @@ import History from './components/History.jsx';
 import Attendance from './components/Attendance.jsx';
 import Tournaments from './components/Tournaments.jsx';
 import Campaigns from './components/Campaigns.jsx';
+import InstallPrompt from './components/InstallPrompt.jsx';
 
 const TABS = [
   { id: 'schedule', label: 'Schedule', icon: Calendar },
@@ -109,7 +110,7 @@ export default function App() {
           )}
         </main>
 
-        <footer className="border-t border-grass-100 py-4 bg-white/40">
+        <footer className="border-t border-grass-100 py-4 bg-white/40 pb-20 sm:pb-4">
           <div className="max-w-6xl mx-auto px-4 flex items-center justify-between text-xs text-ink-700/50 flex-wrap gap-2">
             <span>See you at the park ☀</span>
             <div className="flex items-center gap-3">
@@ -128,6 +129,7 @@ export default function App() {
         </footer>
       </div>
       <IdentityPickerModal />
+      <InstallPrompt />
     </>
   );
 }

@@ -2,12 +2,33 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- Primary metadata -->
+    <title>The Park</title>
+    <meta name="description" content="Belegarth practice management — sign-ins, battles, tournaments, and events." />
+
+    <!-- PWA manifest & theme -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#4a8a2a" />
+
+    <!-- Icons -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <!-- iOS PWA tags (required for proper "Add to Home Screen" behavior on Safari) -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="The Park" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- Prevent address bar from zooming on input focus on iOS -->
+    <meta name="format-detection" content="telephone=no" />
+
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <title>The Park</title>
   </head>
   <body>
     <div id="root"></div>
